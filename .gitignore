@@ -1,9 +1,27 @@
 # Dependencies
 node_modules/
 
+# Exception: Keep mock-repo node_modules for testing (all levels)
+!e2e-tests/mock-repo/node_modules/
+!e2e-tests/mock-repo/node_modules/**/
+!e2e-tests/mock-repo/packages/*/node_modules/
+!e2e-tests/mock-repo/packages/*/node_modules/**/
+
+# macOS
+.DS_Store
 
 # Build outputs
 lib/
 build/
 *.tsbuildinfo
 dist/
+dist-test*/
+
+
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
