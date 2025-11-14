@@ -1,0 +1,12 @@
+{
+  "name": "utilities",
+  "version": "1.0.0",
+  "description": "Utilities package",
+  "main": "index.js",
+  "type": "module",
+  "dependencies": {
+    "dep-a": "^1.0.0",
+    "dep-b": "^1.0.0",
+    "dep-c": "^1.0.0"
+  }
+}
