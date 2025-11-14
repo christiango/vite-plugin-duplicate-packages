@@ -2,9 +2,11 @@
   "name": "@christiango/vite-plugin-duplicate-packages",
   "version": "0.0.0",
   "description": "Utilities for optimizing barrel files",
+  "type": "module",
   "module": "lib/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && tsc --project e2e-tests/tsconfig.json --noEmit",
+    "test": "node --experimental-strip-types --test e2e-tests/**/*.e2e-test.ts",
     "prettier:check": "prettier --check \"**/*.{ts,tsx,json,md}\"",
     "prettier": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "clean": "node ./scripts/clean.js",
@@ -16,10 +18,25 @@
   },
   "author": "Christian Gonzalez",
   "license": "MIT",
-  "dependencies": {},
+  "files": [
+    "lib/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=24.11.1"
+  },
+  "packageManager": "yarn@4.5.3",
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "find-root": "^1.1.0"
+  },
   "devDependencies": {
+    "@types/find-root": "^1.1.4",
     "@types/node": "^24.10.1",
-    "prettier": "^2.8.0",
-    "typescript": "^5.9.3"
+    "prettier": "^3.4.2",
+    "typescript": "^5.9.3",
+    "vite": "^5.0.0"
   }
 }

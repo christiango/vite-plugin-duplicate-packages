@@ -4,10 +4,14 @@ description: 'Install dependencies, run prettier check, build, test, and bundle 
 runs:
   using: 'composite'
   steps:
+    - name: Enable Corepack
+      run: corepack enable
+      shell: bash
+
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '22'
+        node-version: '24'
         cache: 'yarn'
 
     - name: Install dependencies
@@ -20,4 +24,8 @@ runs:
 
     - name: Build project
       run: yarn build
+      shell: bash
+
+    - name: Run tests
+      run: yarn test
       shell: bash

@@ -1,0 +1,39 @@
+name: Publish package to GitHub Packages
+on:
+  release:
+    types: [published]
+
+permissions:
+  id-token: write # Required for OIDC
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build and Test
+        uses: ./.github/actions/build-and-test
+
+      # Setup .npmrc file to publish to GitHub Packages
+      - name: Setup Node.js for publishing
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          registry-url: 'https://registry.npmjs.org'
+          scope: '@christiango'
+
+      # Ensure npm 11.5.1 or later is installed to support trusted publishing
+      - name: Update npm
+        run: npm install -g npm@latest
+
+      - name: Set npm version
+        run: |
+          echo "Setting package version to: ${{ github.event.release.tag_name }}"
+          npm version ${{ github.event.release.tag_name }} --git-tag-version=false
+          echo "Package version set to: $(npm pkg get version | tr -d '"')"
+
+      - name: Publish to npm
+        run: npm publish --access=public
