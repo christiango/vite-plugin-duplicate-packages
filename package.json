@@ -4,7 +4,7 @@
   "description": "Utilities for optimizing barrel files",
   "module": "lib/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && tsc --noEmit e2e-tests/basic.e2e-test.ts",
     "prettier:check": "prettier --check \"**/*.{ts,tsx,json,md}\"",
     "prettier": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "clean": "node ./scripts/clean.js",
@@ -16,10 +16,14 @@
   },
   "author": "Christian Gonzalez",
   "license": "MIT",
+  "engines": {
+    "node": ">=24.11.1"
+  },
   "dependencies": {},
   "devDependencies": {
     "@types/node": "^24.10.1",
     "prettier": "^2.8.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "^5.0.0"
   }
 }
