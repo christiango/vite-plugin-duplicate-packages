@@ -18,6 +18,9 @@
   },
   "author": "Christian Gonzalez",
   "license": "MIT",
+  "keywords": [
+    "vite-plugin"
+  ],
   "files": [
     "lib/",
     "src/",

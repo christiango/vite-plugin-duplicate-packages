@@ -17,7 +17,14 @@ interface ExpectedDuplicationCounts {
   depCV1: number;
 }
 
-async function buildAndVerify(outDirName: string, plugins: Plugin[], expectedCounts: ExpectedDuplicationCounts) {
+interface BuildAndVerifyOptions {
+  outDirName: string;
+  plugins: Plugin[];
+  expectedCounts?: ExpectedDuplicationCounts;
+  entrypoint: string;
+}
+
+async function buildAndVerify({ outDirName, plugins, expectedCounts, entrypoint }: BuildAndVerifyOptions) {
   const mockRepoPath = path.resolve(__dirname, 'mock-repo');
   const appPath = path.join(mockRepoPath, 'packages', 'app');
   const outDir = path.join(appPath, outDirName);
@@ -33,7 +40,7 @@ async function buildAndVerify(outDirName: string, plugins: Plugin[], expectedCou
     build: {
       outDir,
       lib: {
-        entry: path.join(appPath, 'index.js'),
+        entry: path.join(appPath, entrypoint),
         name: 'App',
         fileName: 'app',
         formats: ['es'],
@@ -50,6 +57,11 @@ async function buildAndVerify(outDirName: string, plugins: Plugin[], expectedCou
   // Assert that the output file is not empty
   const fileStats = fs.statSync(outputFile);
   assert.ok(fileStats.size > 0, 'Output file should not be empty');
+
+  // Only verify counts if expectedCounts is provided
+  if (!expectedCounts) {
+    return;
+  }
 
   // Read the bundled output and inspect dependency bundling
   const bundledContent = fs.readFileSync(outputFile, 'utf-8');
@@ -102,31 +114,226 @@ async function buildAndVerify(outDirName: string, plugins: Plugin[], expectedCou
 }
 
 test('e2e test 1 - no plugin: should bundle with duplicates', async () => {
-  await buildAndVerify('dist-test1', [], {
-    depDV1: 2, // duplicated from dep-a and dep-b
-    depAV2: 1,
-    depAV1: 1,
-    depBV1: 1,
-    depCV1: 1,
+  await buildAndVerify({
+    outDirName: 'dist-test1',
+    plugins: [],
+    expectedCounts: {
+      depDV1: 2, // duplicated from dep-a and dep-b
+      depAV2: 1,
+      depAV1: 1,
+      depBV1: 1,
+      depCV1: 1,
+    },
+    entrypoint: 'withDuplicates.js',
   });
 });
 
 test('e2e test 2 - plugin without deduplicateDoppelgangers: should bundle with duplicates', async () => {
-  await buildAndVerify('dist-test2', [duplicatePackagesPlugin()], {
-    depDV1: 2, // still duplicated
-    depAV2: 1,
-    depAV1: 1,
-    depBV1: 1,
-    depCV1: 1,
+  await buildAndVerify({
+    outDirName: 'dist-test2',
+    plugins: [
+      duplicatePackagesPlugin({
+        exceptions: {
+          'dep-a': { maxAllowedVersionCount: 2 },
+        },
+      }),
+    ],
+    expectedCounts: {
+      depDV1: 2, // still duplicated
+      depAV2: 1,
+      depAV1: 1,
+      depBV1: 1,
+      depCV1: 1,
+    },
+    entrypoint: 'withDuplicates.js',
   });
 });
 
 test('e2e test 3 - plugin with deduplicateDoppelgangers: should deduplicate dep-d', async () => {
-  await buildAndVerify('dist-test3', [duplicatePackagesPlugin({ deduplicateDoppelgangers: true })], {
-    depDV1: 1, // deduplicated!
-    depAV2: 1,
-    depAV1: 1,
-    depBV1: 1,
-    depCV1: 1,
+  await buildAndVerify({
+    outDirName: 'dist-test3',
+    plugins: [
+      duplicatePackagesPlugin({
+        deduplicateDoppelgangers: true,
+        exceptions: {
+          'dep-a': { maxAllowedVersionCount: 2 },
+        },
+      }),
+    ],
+    expectedCounts: {
+      depDV1: 1, // deduplicated!
+      depAV2: 1,
+      depAV1: 1,
+      depBV1: 1,
+      depCV1: 1,
+    },
+    entrypoint: 'withDuplicates.js',
   });
+});
+
+test('e2e test 4 - plugin without exceptions: should throw error for duplicate packages', async () => {
+  const mockRepoPath = path.resolve(__dirname, 'mock-repo');
+  const appPath = path.join(mockRepoPath, 'packages', 'app');
+  const outDir = path.join(appPath, 'dist-test4');
+
+  // Clean up dist directory if it exists
+  if (fs.existsSync(outDir)) {
+    fs.rmSync(outDir, { recursive: true });
+  }
+
+  await assert.rejects(
+    async () => {
+      await build({
+        root: appPath,
+        build: {
+          outDir,
+          lib: {
+            entry: path.join(appPath, 'withDuplicates.js'),
+            name: 'App',
+            fileName: 'app',
+            formats: ['es'],
+          },
+        },
+        plugins: [duplicatePackagesPlugin()],
+        logLevel: 'error',
+      });
+    },
+    (error: Error) => {
+      const expectedError = `Duplicate packages detected in bundle:
+
+  • dep-a: 2.0.0, 1.0.0
+
+Multiple versions of the same package can cause runtime errors and increase bundle size.`;
+      assert.ok(
+        error.message.includes(expectedError),
+        `Error message should contain expected error. Got: ${error.message}`,
+      );
+      return true;
+    },
+    'Should throw an error when duplicates are detected without exceptions',
+  );
+});
+
+test('e2e test 5 - plugin with noDuplicateViolations: should build successfully with no duplicates', async () => {
+  await buildAndVerify({
+    outDirName: 'dist-test5',
+    plugins: [duplicatePackagesPlugin()],
+    expectedCounts: {
+      depDV1: 0,
+      depAV2: 0,
+      depAV1: 0,
+      depBV1: 0,
+      depCV1: 1,
+    },
+    entrypoint: 'noDuplicateViolations.js',
+  });
+});
+
+test('e2e test 6 - plugin with unused exception: should throw error for unused exception', async () => {
+  const mockRepoPath = path.resolve(__dirname, 'mock-repo');
+  const appPath = path.join(mockRepoPath, 'packages', 'app');
+  const outDir = path.join(appPath, 'dist-test6');
+
+  // Clean up dist directory if it exists
+  if (fs.existsSync(outDir)) {
+    fs.rmSync(outDir, { recursive: true });
+  }
+
+  await assert.rejects(
+    async () => {
+      await build({
+        root: appPath,
+        build: {
+          outDir,
+          lib: {
+            entry: path.join(appPath, 'noDuplicateViolations.js'),
+            name: 'App',
+            fileName: 'app',
+            formats: ['es'],
+          },
+        },
+        plugins: [
+          duplicatePackagesPlugin({
+            exceptions: {
+              'dep-2': { maxAllowedVersionCount: 2 },
+            },
+          }),
+        ],
+        logLevel: 'error',
+      });
+    },
+    (error: Error) => {
+      const expectedError = `Unused duplicate package exceptions:
+
+  • dep-2
+
+These duplicate package exceptions are not used. Please remove them from your configuration to vite-plugin-duplicate-packages.`;
+      assert.ok(
+        error.message.includes(expectedError),
+        `Error message should contain expected error. Got: ${error.message}`,
+      );
+      return true;
+    },
+    'Should throw an error when exception is unused',
+  );
+});
+
+test('e2e test 7 - plugin with duplicate and unused exception: should throw combined error', async () => {
+  const mockRepoPath = path.resolve(__dirname, 'mock-repo');
+  const appPath = path.join(mockRepoPath, 'packages', 'app');
+  const outDir = path.join(appPath, 'dist-test7');
+
+  // Clean up dist directory if it exists
+  if (fs.existsSync(outDir)) {
+    fs.rmSync(outDir, { recursive: true });
+  }
+
+  await assert.rejects(
+    async () => {
+      await build({
+        root: appPath,
+        build: {
+          outDir,
+          lib: {
+            entry: path.join(appPath, 'withDuplicates.js'),
+            name: 'App',
+            fileName: 'app',
+            formats: ['es'],
+          },
+        },
+        plugins: [
+          duplicatePackagesPlugin({
+            exceptions: {
+              'unused-package': { maxAllowedVersionCount: 3 },
+            },
+          }),
+        ],
+        logLevel: 'error',
+      });
+    },
+    (error: Error) => {
+      const expectedDuplicateError = `Duplicate packages detected in bundle:
+
+  • dep-a: 2.0.0, 1.0.0
+
+Multiple versions of the same package can cause runtime errors and increase bundle size.`;
+
+      const expectedUnusedError = `Unused duplicate package exceptions:
+
+  • unused-package
+
+These duplicate package exceptions are not used. Please remove them from your configuration to vite-plugin-duplicate-packages.`;
+
+      assert.ok(
+        error.message.includes(expectedDuplicateError),
+        `Error message should contain duplicate package error. Got: ${error.message}`,
+      );
+      assert.ok(
+        error.message.includes(expectedUnusedError),
+        `Error message should contain unused exception error. Got: ${error.message}`,
+      );
+      return true;
+    },
+    'Should throw an error with both duplicate package and unused exception messages',
+  );
 });

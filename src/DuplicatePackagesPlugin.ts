@@ -5,6 +5,15 @@ import chalk from 'chalk';
 import { readFileSync } from 'fs';
 
 export interface DuplicatePackagesConfig {
+  /** There are some cases where duplication cannot be avoided in a bundle. Use this to add specific exceptions to the no duplicate packages policy. */
+  exceptions?: {
+    /** Map of package name to exceptions. */
+    [packageName: string]: {
+      /* Maximum number of different versions to allow. Will not error if count is less than max, but will error if there are no duplicates */
+      maxAllowedVersionCount: number;
+    };
+  };
+
   /**
    * Automatically deduplicate NPM/Yarn doppelgangers https://rushjs.io/pages/advanced/npm_doppelgangers/
    */
@@ -59,6 +68,7 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
 
   return {
     name: 'vite-duplicate-package-plugin',
+    apply: 'build', // Only run on the build, not during dev server
     enforce: 'pre',
 
     // Doppelganger deduplication happens during module resolution
@@ -102,6 +112,79 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
       }
 
       return null;
+    },
+
+    generateBundle(_, bundle) {
+      // Analyze the bundle for multiple versions of the same package
+      // Map of the package name to the versions of that package found in the bundle
+      const packagesMap = new Map<string, { versions: Set<string> }>();
+      for (const [_, fileInfo] of Object.entries(bundle)) {
+        if (fileInfo.type === 'chunk') {
+          for (const moduleId of Object.keys(fileInfo.modules)) {
+            const packageInfo = getPackageJsonForPath(moduleId);
+            if (packageInfo) {
+              const packageEntryInMap = packagesMap.get(packageInfo.name) ?? { versions: new Set<string>() };
+              packageEntryInMap.versions.add(packageInfo.version);
+              packagesMap.set(packageInfo.name, packageEntryInMap);
+            }
+          }
+        }
+      }
+
+      const duplicatePackageErrors: { packageName: string; versions: Set<string>; maxAllowedVersionCount?: number }[] =
+        [];
+      const unusedExceptions = new Set<string>(Object.keys(config?.exceptions ?? {}));
+      for (const [packageName, packageInfo] of packagesMap.entries()) {
+        // Remove from unused exceptions since we found this package in the bundle
+        unusedExceptions.delete(packageName);
+
+        if (packageInfo.versions.size > 1) {
+          const relevantException = config?.exceptions?.[packageName];
+
+          if (!relevantException || packageInfo.versions.size > relevantException.maxAllowedVersionCount) {
+            duplicatePackageErrors.push({
+              packageName,
+              versions: packageInfo.versions,
+              maxAllowedVersionCount: relevantException?.maxAllowedVersionCount,
+            });
+          }
+        }
+      }
+
+      const hasErrors = duplicatePackageErrors.length > 0 || unusedExceptions.size > 0;
+
+      if (hasErrors) {
+        const errorParts: string[] = [];
+
+        if (duplicatePackageErrors.length > 0) {
+          const duplicateDetails = duplicatePackageErrors
+            .map(({ packageName, versions, maxAllowedVersionCount }) => {
+              const versionList = Array.from(versions).join(', ');
+              const exceptionNote =
+                maxAllowedVersionCount !== undefined
+                  ? ` (exception allows max ${maxAllowedVersionCount}, found ${versions.size})`
+                  : '';
+              return `  • ${packageName}: ${versionList}${exceptionNote}`;
+            })
+            .join('\n');
+
+          errorParts.push(
+            `Duplicate packages detected in bundle:\n\n${duplicateDetails}\n\nMultiple versions of the same package can cause runtime errors and increase bundle size.`,
+          );
+        }
+
+        if (unusedExceptions.size > 0) {
+          const unusedDetails = Array.from(unusedExceptions)
+            .map((packageName) => `  • ${packageName}`)
+            .join('\n');
+
+          errorParts.push(
+            `Unused duplicate package exceptions:\n\n${unusedDetails}\n\nThese duplicate package exceptions are not used. Please remove them from your configuration to vite-plugin-duplicate-packages.`,
+          );
+        }
+
+        this.error(errorParts.join('\n\n'));
+      }
     },
 
     // Report duplicates and doppelgangers after build
