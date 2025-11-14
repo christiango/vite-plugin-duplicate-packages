@@ -2,6 +2,7 @@
   "name": "@christiango/vite-plugin-duplicate-packages",
   "version": "0.0.0",
   "description": "Utilities for optimizing barrel files",
+  "type": "module",
   "module": "lib/index.js",
   "scripts": {
     "build": "tsc && tsc --project e2e-tests/tsconfig.json --noEmit",
