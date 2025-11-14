@@ -5,6 +5,15 @@ import chalk from 'chalk';
 import { readFileSync } from 'fs';
 
 export interface DuplicatePackagesConfig {
+  /** There are some cases where duplication cannot be avoided in a bundle. Use this to add specific exceptions to the no duplicate packages policy. */
+  exceptions?: {
+    /** Map of package name to exceptions. */
+    [packageName: string]: {
+      /* Maximum number of different versions to allow. Will not error if count is less than max, but will error if there are no duplicates */
+      maxAllowedVersionCount: number;
+    };
+  };
+
   /**
    * Automatically deduplicate NPM/Yarn doppelgangers https://rushjs.io/pages/advanced/npm_doppelgangers/
    */
@@ -59,6 +68,7 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
 
   return {
     name: 'vite-duplicate-package-plugin',
+    apply: 'build', // Only run on the build, not during dev server
     enforce: 'pre',
 
     // Doppelganger deduplication happens during module resolution
@@ -102,6 +112,44 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
       }
 
       return null;
+    },
+
+    generateBundle(_, bundle) {
+      // Analyze the bundle for multiple versions of the same package
+      // Map of the package name to the versions of that package found in the bundle
+      const packagesMap = new Map<string, { versions: Set<string> }>();
+      for (const [_, fileInfo] of Object.entries(bundle)) {
+        if (fileInfo.type === 'chunk') {
+          for (const moduleId of Object.keys(fileInfo.modules)) {
+            const packageInfo = getPackageJsonForPath(moduleId);
+            if (packageInfo) {
+              const packageEntryInMap = packagesMap.get(packageInfo.name) ?? { versions: new Set<string>() };
+              packageEntryInMap.versions.add(packageInfo.version);
+              packagesMap.set(packageInfo.name, packageEntryInMap);
+            }
+          }
+        }
+      }
+
+      const duplicatePackageErrors: {packageName: string, versions: Set<string>}[] = [];
+      for (const [packageName, packageInfo] of packagesMap.entries()) {
+        if (packageInfo.versions.size > 1) {
+          duplicatePackageErrors.push({ packageName, versions: packageInfo.versions });
+        }
+      }
+
+      if (duplicatePackageErrors.length > 0) {
+        const errorDetails = duplicatePackageErrors
+          .map(({ packageName, versions }) => {
+            const versionList = Array.from(versions).join(', ');
+            return `  • ${packageName}: ${versionList}`;
+          })
+          .join('\n');
+
+        this.error(
+          `Duplicate packages detected in bundle:\n\n${errorDetails}\n\nMultiple versions of the same package can cause runtime errors and increase bundle size.`,
+        );
+      }
     },
 
     // Report duplicates and doppelgangers after build
