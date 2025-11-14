@@ -1,12 +1,15 @@
 // @ts-check
 
+import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+
 /**
  * @typedef {import('node:child_process').ExecSyncOptions} ExecSyncOptions
  */
 
 function untrackedFilesExist() {
-  const execSync = require('child_process').execSync;
-
   const untrackedFiles = execSync('git ls-files -z --others --exclude-standard').toString('utf8').split('\0');
 
   let hasUntrackedFiles = false;
@@ -22,8 +25,6 @@ function untrackedFilesExist() {
 }
 
 function clean(forceClean, scrub) {
-  const execSync = require('child_process').execSync;
-
   // We want to remove all files except node_modules, so we need to exclude
   // those directories. We can't git clean with -X while excluding directories, and -x will
   // remove untracked files, possibly causing loss of work. As a result, let's check and make sure
@@ -58,12 +59,12 @@ function clean(forceClean, scrub) {
     if (errorOutput.indexOf('EBUSY') > -1 || errorOutput.indexOf('Permission denied') > -1) {
       console.error('Clean failed due to permission denial.');
       console.error(
-        'Please make sure you have no open files, directories or command prompts in gitignored areas attempting to be cleaned.'
+        'Please make sure you have no open files, directories or command prompts in gitignored areas attempting to be cleaned.',
       );
     } else if (errorOutput.indexOf('Filename too long') > -1) {
       console.error('Clean failed due to long filenames.');
       console.error(
-        'Please ensure you are using git v2.32.0 or later to resolve an issue with git traversing ignored directories.\n'
+        'Please ensure you are using git v2.32.0 or later to resolve an issue with git traversing ignored directories.\n',
       );
     } else {
       console.error('Unknown error occurred.');

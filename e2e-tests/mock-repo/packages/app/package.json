@@ -1,0 +1,12 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "description": "App package",
+  "main": "index.js",
+  "type": "module",
+  "dependencies": {
+    "dep-a": "^2.0.0",
+    "dep-b": "^1.0.0",
+    "dep-c": "^1.0.0"
+  }
+}
