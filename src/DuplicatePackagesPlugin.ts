@@ -1,5 +1,5 @@
 import type { Plugin } from 'vite' with { 'resolution-mode': 'import' };
-import { join, resolve } from 'path';
+import { join, resolve, normalize } from 'path';
 import findRoot from 'find-root';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
@@ -22,7 +22,9 @@ export interface PackageInfo {
 
 function getPackageJsonForPath(path: string): PackageInfo | undefined {
   try {
-    const root = findRoot(path);
+    // Normalize the path to use platform-specific separators
+    const normalizedPath = normalize(path);
+    const root = findRoot(normalizedPath);
 
     const packageJsonPath = join(root, 'package.json');
     const packageJsonContent = readFileSync(packageJsonPath, 'utf-8');
@@ -83,7 +85,13 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
       if (match && match.resolveToPath !== packageInfo.rootPath) {
         // Doppelganger found - redirect to canonical path
         match.paths.add(packageInfo.rootPath);
-        const redirectedId = resolved.id.replace(packageInfo.rootPath, match.resolveToPath);
+
+        // Normalize paths to handle Windows path separator mismatch
+        // resolved.id uses forward slashes, but packageInfo.rootPath may use backslashes on Windows
+        const normalizedOriginalPath = packageInfo.rootPath.replace(/\\/g, '/');
+        const normalizedCanonicalPath = match.resolveToPath.replace(/\\/g, '/');
+        const redirectedId = resolved.id.replace(normalizedOriginalPath, normalizedCanonicalPath);
+
         return redirectedId;
       } else if (!match) {
         // First occurrence - store as canonical
