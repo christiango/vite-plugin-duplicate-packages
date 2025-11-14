@@ -13,6 +13,7 @@ lib/
 build/
 *.tsbuildinfo
 dist/
+dist-test*/
 
 
 .pnp.*
