@@ -4,7 +4,7 @@
   "description": "Utilities for optimizing barrel files",
   "module": "lib/index.js",
   "scripts": {
-    "build": "tsc && tsc --noEmit e2e-tests/basic.e2e-test.ts",
+    "build": "tsc && tsc --project e2e-tests/tsconfig.json --noEmit",
     "prettier:check": "prettier --check \"**/*.{ts,tsx,json,md}\"",
     "prettier": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "clean": "node ./scripts/clean.js",
