@@ -53,3 +53,47 @@ When enabled, if you have:
 - `package-a@2.0.0` in `node_modules/package-a` (unused)
 
 The plugin will deduplicate the two instances of `package-a@1.0.0`, reducing your bundle size.
+
+### `exceptions`
+
+- **Type:** `{ [packageName: string]: { maxAllowedVersionCount: number } }`
+- **Default:** `{}`
+
+Configure exceptions for packages that are allowed to have multiple versions in the bundle. This is useful for cases where duplicate packages cannot be avoided.
+
+**Example:**
+
+```typescript
+duplicatePackagesPlugin({
+  exceptions: {
+    react: { maxAllowedVersionCount: 2 },
+    lodash: { maxAllowedVersionCount: 3 },
+  },
+});
+```
+
+With this configuration:
+
+- `react` can have up to 2 versions in the bundle without causing an error
+- `lodash` can have up to 3 versions in the bundle without causing an error
+- Any other package with multiple versions will cause a build error
+
+**Important:** The plugin will throw an error if you define an exception for a package that is not found in the bundle or doesn't have duplicates. This helps keep your configuration clean and up-to-date.
+
+## Features
+
+### Duplicate Package Detection
+
+By default, the plugin analyzes your bundle and throws an error if multiple versions of the same package are detected. This helps prevent issues caused by having different versions of the same library in your bundle.
+
+**Example error message:**
+
+```text
+Duplicate packages detected in bundle:
+
+  • react: 17.0.2, 18.2.0
+
+Multiple versions of the same package can cause runtime errors and increase bundle size.
+```
+
+When duplicates are detected, the build will fail with a clear error message showing which packages have multiple versions.
