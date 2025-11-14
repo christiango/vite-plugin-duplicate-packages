@@ -17,11 +17,7 @@ interface ExpectedDuplicationCounts {
   depCV1: number;
 }
 
-async function buildAndVerify(
-  outDirName: string,
-  plugins: Plugin[],
-  expectedCounts: ExpectedDuplicationCounts
-) {
+async function buildAndVerify(outDirName: string, plugins: Plugin[], expectedCounts: ExpectedDuplicationCounts) {
   const mockRepoPath = path.resolve(__dirname, 'mock-repo');
   const appPath = path.join(mockRepoPath, 'packages', 'app');
   const outDir = path.join(appPath, outDirName);
@@ -126,15 +122,11 @@ test('e2e test 2 - plugin without deduplicateDoppelgangers: should bundle with d
 });
 
 test('e2e test 3 - plugin with deduplicateDoppelgangers: should deduplicate dep-d', async () => {
-  await buildAndVerify(
-    'dist-test3',
-    [duplicatePackagesPlugin({ deduplicateDoppelgangers: true })],
-    {
-      depDV1: 1, // deduplicated!
-      depAV2: 1,
-      depAV1: 1,
-      depBV1: 1,
-      depCV1: 1,
-    }
-  );
+  await buildAndVerify('dist-test3', [duplicatePackagesPlugin({ deduplicateDoppelgangers: true })], {
+    depDV1: 1, // deduplicated!
+    depAV2: 1,
+    depAV1: 1,
+    depBV1: 1,
+    depCV1: 1,
+  });
 });

@@ -17,6 +17,12 @@
   },
   "author": "Christian Gonzalez",
   "license": "MIT",
+  "files": [
+    "lib/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=24.11.1"
   },
