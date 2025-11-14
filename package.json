@@ -1,0 +1,25 @@
+{
+  "name": "@christiango/vite-plugin-duplicate-packages",
+  "version": "0.0.0",
+  "description": "Utilities for optimizing barrel files",
+  "module": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "prettier:check": "prettier --check \"**/*.{ts,tsx,json,md}\"",
+    "prettier": "prettier --write \"**/*.{ts,tsx,json,md}\"",
+    "clean": "node ./scripts/clean.js",
+    "scrub": "node ./scripts/clean.js --scrub"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/christiango/vite-plugin-duplicate-packages.git"
+  },
+  "author": "Christian Gonzalez",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "prettier": "^2.8.0",
+    "typescript": "^5.9.3"
+  }
+}

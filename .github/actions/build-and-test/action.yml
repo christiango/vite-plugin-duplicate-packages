@@ -1,0 +1,23 @@
+name: 'Build and Test'
+description: 'Install dependencies, run prettier check, build, test, and bundle the project'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'yarn'
+
+    - name: Install dependencies
+      run: yarn install --frozen-lockfile
+      shell: bash
+
+    - name: Run prettier check
+      run: yarn prettier:check
+      shell: bash
+
+    - name: Build project
+      run: yarn build
+      shell: bash
