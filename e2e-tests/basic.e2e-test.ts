@@ -29,10 +29,6 @@ test('basic e2e - vite should bundle app package', async () => {
         fileName: 'app',
         formats: ['es'],
       },
-      rollupOptions: {
-        // Don't bundle dependencies, treat them as external
-        external: ['dep-a', 'dep-b', 'dep-c'],
-      },
     },
     logLevel: 'info',
   });
