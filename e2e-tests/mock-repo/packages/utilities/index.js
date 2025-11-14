@@ -9,5 +9,5 @@ export default {
     console.log(depA.greet());
     console.log(depB.greet());
     console.log(depC.greet());
-  }
+  },
 };
