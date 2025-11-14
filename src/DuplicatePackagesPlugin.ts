@@ -133,7 +133,11 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
 
       const duplicatePackageErrors: { packageName: string; versions: Set<string>; maxAllowedVersionCount?: number }[] =
         [];
+      const unusedExceptions = new Set<string>(Object.keys(config?.exceptions ?? {}));
       for (const [packageName, packageInfo] of packagesMap.entries()) {
+        // Remove from unused exceptions since we found this package in the bundle
+        unusedExceptions.delete(packageName);
+
         if (packageInfo.versions.size > 1) {
           const relevantException = config?.exceptions?.[packageName];
 
@@ -147,21 +151,39 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
         }
       }
 
-      if (duplicatePackageErrors.length > 0) {
-        const errorDetails = duplicatePackageErrors
-          .map(({ packageName, versions, maxAllowedVersionCount }) => {
-            const versionList = Array.from(versions).join(', ');
-            const exceptionNote =
-              maxAllowedVersionCount !== undefined
-                ? ` (exception allows max ${maxAllowedVersionCount}, found ${versions.size})`
-                : '';
-            return `  • ${packageName}: ${versionList}${exceptionNote}`;
-          })
-          .join('\n');
+      const hasErrors = duplicatePackageErrors.length > 0 || unusedExceptions.size > 0;
 
-        this.error(
-          `Duplicate packages detected in bundle:\n\n${errorDetails}\n\nMultiple versions of the same package can cause runtime errors and increase bundle size.`,
-        );
+      if (hasErrors) {
+        const errorParts: string[] = [];
+
+        if (duplicatePackageErrors.length > 0) {
+          const duplicateDetails = duplicatePackageErrors
+            .map(({ packageName, versions, maxAllowedVersionCount }) => {
+              const versionList = Array.from(versions).join(', ');
+              const exceptionNote =
+                maxAllowedVersionCount !== undefined
+                  ? ` (exception allows max ${maxAllowedVersionCount}, found ${versions.size})`
+                  : '';
+              return `  • ${packageName}: ${versionList}${exceptionNote}`;
+            })
+            .join('\n');
+
+          errorParts.push(
+            `Duplicate packages detected in bundle:\n\n${duplicateDetails}\n\nMultiple versions of the same package can cause runtime errors and increase bundle size.`,
+          );
+        }
+
+        if (unusedExceptions.size > 0) {
+          const unusedDetails = Array.from(unusedExceptions)
+            .map((packageName) => `  • ${packageName}`)
+            .join('\n');
+
+          errorParts.push(
+            `Unused duplicate package exceptions:\n\n${unusedDetails}\n\nThese duplicate package exceptions are not used. Please remove them from your configuration to vite-plugin-duplicate-packages.`,
+          );
+        }
+
+        this.error(errorParts.join('\n\n'));
       }
     },
 

@@ -213,3 +213,127 @@ Multiple versions of the same package can cause runtime errors and increase bund
     'Should throw an error when duplicates are detected without exceptions',
   );
 });
+
+test('e2e test 5 - plugin with noDuplicateViolations: should build successfully with no duplicates', async () => {
+  await buildAndVerify({
+    outDirName: 'dist-test5',
+    plugins: [duplicatePackagesPlugin()],
+    expectedCounts: {
+      depDV1: 0,
+      depAV2: 0,
+      depAV1: 0,
+      depBV1: 0,
+      depCV1: 1,
+    },
+    entrypoint: 'noDuplicateViolations.js',
+  });
+});
+
+test('e2e test 6 - plugin with unused exception: should throw error for unused exception', async () => {
+  const mockRepoPath = path.resolve(__dirname, 'mock-repo');
+  const appPath = path.join(mockRepoPath, 'packages', 'app');
+  const outDir = path.join(appPath, 'dist-test6');
+
+  // Clean up dist directory if it exists
+  if (fs.existsSync(outDir)) {
+    fs.rmSync(outDir, { recursive: true });
+  }
+
+  await assert.rejects(
+    async () => {
+      await build({
+        root: appPath,
+        build: {
+          outDir,
+          lib: {
+            entry: path.join(appPath, 'noDuplicateViolations.js'),
+            name: 'App',
+            fileName: 'app',
+            formats: ['es'],
+          },
+        },
+        plugins: [
+          duplicatePackagesPlugin({
+            exceptions: {
+              'dep-2': { maxAllowedVersionCount: 2 },
+            },
+          }),
+        ],
+        logLevel: 'error',
+      });
+    },
+    (error: Error) => {
+      const expectedError = `Unused duplicate package exceptions:
+
+  • dep-2
+
+These duplicate package exceptions are not used. Please remove them from your configuration to vite-plugin-duplicate-packages.`;
+      assert.ok(
+        error.message.includes(expectedError),
+        `Error message should contain expected error. Got: ${error.message}`,
+      );
+      return true;
+    },
+    'Should throw an error when exception is unused',
+  );
+});
+
+test('e2e test 7 - plugin with duplicate and unused exception: should throw combined error', async () => {
+  const mockRepoPath = path.resolve(__dirname, 'mock-repo');
+  const appPath = path.join(mockRepoPath, 'packages', 'app');
+  const outDir = path.join(appPath, 'dist-test7');
+
+  // Clean up dist directory if it exists
+  if (fs.existsSync(outDir)) {
+    fs.rmSync(outDir, { recursive: true });
+  }
+
+  await assert.rejects(
+    async () => {
+      await build({
+        root: appPath,
+        build: {
+          outDir,
+          lib: {
+            entry: path.join(appPath, 'withDuplicates.js'),
+            name: 'App',
+            fileName: 'app',
+            formats: ['es'],
+          },
+        },
+        plugins: [
+          duplicatePackagesPlugin({
+            exceptions: {
+              'unused-package': { maxAllowedVersionCount: 3 },
+            },
+          }),
+        ],
+        logLevel: 'error',
+      });
+    },
+    (error: Error) => {
+      const expectedDuplicateError = `Duplicate packages detected in bundle:
+
+  • dep-a: 2.0.0, 1.0.0
+
+Multiple versions of the same package can cause runtime errors and increase bundle size.`;
+
+      const expectedUnusedError = `Unused duplicate package exceptions:
+
+  • unused-package
+
+These duplicate package exceptions are not used. Please remove them from your configuration to vite-plugin-duplicate-packages.`;
+
+      assert.ok(
+        error.message.includes(expectedDuplicateError),
+        `Error message should contain duplicate package error. Got: ${error.message}`,
+      );
+      assert.ok(
+        error.message.includes(expectedUnusedError),
+        `Error message should contain unused exception error. Got: ${error.message}`,
+      );
+      return true;
+    },
+    'Should throw an error with both duplicate package and unused exception messages',
+  );
+});
