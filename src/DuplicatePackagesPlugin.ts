@@ -23,7 +23,7 @@ export interface PackageInfo {
 function getPackageJsonForPath(path: string): PackageInfo | undefined {
   try {
     const root = findRoot(path);
-    
+
     const packageJsonPath = join(root, 'package.json');
     const packageJsonContent = readFileSync(packageJsonPath, 'utf-8');
     const packageJson = JSON.parse(packageJsonContent);
@@ -58,7 +58,7 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
   return {
     name: 'vite-duplicate-package-plugin',
     enforce: 'pre',
-    
+
     // Doppelganger deduplication happens during module resolution
     async resolveId(source, importer, options) {
       if (!config?.deduplicateDoppelgangers || !importer || source.startsWith('\0')) {
