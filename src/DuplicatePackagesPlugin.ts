@@ -2,6 +2,7 @@ import type { Plugin } from 'vite' with { 'resolution-mode': 'import' };
 import { join, resolve } from 'path';
 import findRoot from 'find-root';
 import chalk from 'chalk';
+import { readFileSync } from 'fs';
 
 export interface DuplicatePackagesConfig {
   /**
@@ -22,8 +23,10 @@ export interface PackageInfo {
 function getPackageJsonForPath(path: string): PackageInfo | undefined {
   try {
     const root = findRoot(path);
-    // eslint-disable-next-line eslint-security/detect-non-literal-require
-    const packageJson = require(join(root, 'package.json'));
+    
+    const packageJsonPath = join(root, 'package.json');
+    const packageJsonContent = readFileSync(packageJsonPath, 'utf-8');
+    const packageJson = JSON.parse(packageJsonContent);
 
     if (!packageJson) {
       return undefined;
@@ -55,7 +58,7 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
   return {
     name: 'vite-duplicate-package-plugin',
     enforce: 'pre',
-
+    
     // Doppelganger deduplication happens during module resolution
     async resolveId(source, importer, options) {
       if (!config?.deduplicateDoppelgangers || !importer || source.startsWith('\0')) {
