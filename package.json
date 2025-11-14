@@ -5,6 +5,7 @@
   "module": "lib/index.js",
   "scripts": {
     "build": "tsc && tsc --project e2e-tests/tsconfig.json --noEmit",
+    "test": "node --experimental-strip-types --test e2e-tests/**/*.e2e-test.ts",
     "prettier:check": "prettier --check \"**/*.{ts,tsx,json,md}\"",
     "prettier": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "clean": "node ./scripts/clean.js",
