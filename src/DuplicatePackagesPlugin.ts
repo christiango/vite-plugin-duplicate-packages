@@ -15,10 +15,9 @@ export interface PackageInfo {
 
   version: string;
 
-    /** The root path for the package json file being bundled */
+  /** The root path for the package json file being bundled */
   rootPath: string;
 }
-
 
 function getPackageJsonForPath(path: string): PackageInfo | undefined {
   try {
@@ -43,8 +42,8 @@ function getPackageJsonForPath(path: string): PackageInfo | undefined {
 
 /**
  * Vite plugin that helps
- * @param config 
- * @returns 
+ * @param config
+ * @returns
  */
 export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugin {
   interface DoppelgangerInfo {
@@ -87,13 +86,12 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
         // First occurrence - store as canonical
         doppelgangerMap.set(packageId, {
           resolveToPath: packageInfo.rootPath,
-          paths: new Set([packageInfo.rootPath])
+          paths: new Set([packageInfo.rootPath]),
         });
       }
 
       return null;
     },
-
 
     // Report duplicates and doppelgangers after build
     buildEnd() {
@@ -105,7 +103,6 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
           }
         }
       }
-
-    }
+    },
   };
 }

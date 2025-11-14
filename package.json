@@ -34,7 +34,7 @@
   "devDependencies": {
     "@types/find-root": "^1.1.4",
     "@types/node": "^24.10.1",
-    "prettier": "^2.8.0",
+    "prettier": "^3.4.2",
     "typescript": "^5.9.3",
     "vite": "^5.0.0"
   }

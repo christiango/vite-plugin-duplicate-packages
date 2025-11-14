@@ -4,6 +4,10 @@ description: 'Install dependencies, run prettier check, build, test, and bundle 
 runs:
   using: 'composite'
   steps:
+    - name: Enable Corepack
+      run: corepack enable
+      shell: bash
+
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:

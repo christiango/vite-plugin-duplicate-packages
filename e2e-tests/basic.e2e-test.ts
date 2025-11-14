@@ -65,7 +65,7 @@ async function buildAndVerify(outDirName: string, plugins: Plugin[], expectedCou
   assert.strictEqual(
     depDV1Count,
     expectedCounts.depDV1,
-    `dep-d v1 should be bundled ${expectedCounts.depDV1} time(s), found ${depDV1Count}`
+    `dep-d v1 should be bundled ${expectedCounts.depDV1} time(s), found ${depDV1Count}`,
   );
 
   // Verify dep-a v2
@@ -73,7 +73,7 @@ async function buildAndVerify(outDirName: string, plugins: Plugin[], expectedCou
   assert.strictEqual(
     depAV2Count,
     expectedCounts.depAV2,
-    `dep-a v2 should be bundled ${expectedCounts.depAV2} time(s), found ${depAV2Count}`
+    `dep-a v2 should be bundled ${expectedCounts.depAV2} time(s), found ${depAV2Count}`,
   );
 
   // Verify dep-a v1
@@ -81,7 +81,7 @@ async function buildAndVerify(outDirName: string, plugins: Plugin[], expectedCou
   assert.strictEqual(
     depAV1Count,
     expectedCounts.depAV1,
-    `dep-a v1 should be bundled ${expectedCounts.depAV1} time(s), found ${depAV1Count}`
+    `dep-a v1 should be bundled ${expectedCounts.depAV1} time(s), found ${depAV1Count}`,
   );
 
   // Verify dep-b
@@ -89,7 +89,7 @@ async function buildAndVerify(outDirName: string, plugins: Plugin[], expectedCou
   assert.strictEqual(
     depBCount,
     expectedCounts.depBV1,
-    `dep-b v1 should be bundled ${expectedCounts.depBV1} time(s), found ${depBCount}`
+    `dep-b v1 should be bundled ${expectedCounts.depBV1} time(s), found ${depBCount}`,
   );
 
   // Verify dep-c
@@ -97,7 +97,7 @@ async function buildAndVerify(outDirName: string, plugins: Plugin[], expectedCou
   assert.strictEqual(
     depCCount,
     expectedCounts.depCV1,
-    `dep-c v1 should be bundled ${expectedCounts.depCV1} time(s), found ${depCCount}`
+    `dep-c v1 should be bundled ${expectedCounts.depCV1} time(s), found ${depCCount}`,
   );
 }
 
