@@ -131,18 +131,31 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
         }
       }
 
-      const duplicatePackageErrors: {packageName: string, versions: Set<string>}[] = [];
+      const duplicatePackageErrors: { packageName: string; versions: Set<string>; maxAllowedVersionCount?: number }[] =
+        [];
       for (const [packageName, packageInfo] of packagesMap.entries()) {
         if (packageInfo.versions.size > 1) {
-          duplicatePackageErrors.push({ packageName, versions: packageInfo.versions });
+          const relevantException = config?.exceptions?.[packageName];
+
+          if (!relevantException || packageInfo.versions.size > relevantException.maxAllowedVersionCount) {
+            duplicatePackageErrors.push({
+              packageName,
+              versions: packageInfo.versions,
+              maxAllowedVersionCount: relevantException?.maxAllowedVersionCount,
+            });
+          }
         }
       }
 
       if (duplicatePackageErrors.length > 0) {
         const errorDetails = duplicatePackageErrors
-          .map(({ packageName, versions }) => {
+          .map(({ packageName, versions, maxAllowedVersionCount }) => {
             const versionList = Array.from(versions).join(', ');
-            return `  • ${packageName}: ${versionList}`;
+            const exceptionNote =
+              maxAllowedVersionCount !== undefined
+                ? ` (exception allows max ${maxAllowedVersionCount}, found ${versions.size})`
+                : '';
+            return `  • ${packageName}: ${versionList}${exceptionNote}`;
           })
           .join('\n');
 
