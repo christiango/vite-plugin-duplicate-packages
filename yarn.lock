@@ -9,7 +9,10 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@christiango/vite-plugin-duplicate-packages@workspace:."
   dependencies:
+    "@types/find-root": "npm:^1.1.4"
     "@types/node": "npm:^24.10.1"
+    chalk: "npm:^5.3.0"
+    find-root: "npm:^1.1.0"
     prettier: "npm:^2.8.0"
     typescript: "npm:^5.9.3"
     vite: "npm:^5.0.0"
@@ -399,6 +402,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/find-root@npm:^1.1.4":
+  version: 1.1.4
+  resolution: "@types/find-root@npm:1.1.4"
+  checksum: 10c0/c5eb2fc5b53070343cf757f70e5bc0baf4f701b4bd6cd272869e8b517e049bbaed19afe5ea450f7e7c84d1b31be20d0a5b17c7d83fddfa175312a867fbc3830f
+  languageName: node
+  linkType: hard
+
 "@types/node@npm:^24.10.1":
   version: 24.10.1
   resolution: "@types/node@npm:24.10.1"
@@ -468,6 +478,13 @@ __metadata:
     ssri: "npm:^12.0.0"
     unique-filename: "npm:^4.0.0"
   checksum: 10c0/e3efcf3af1c984e6e59e03372d9289861736a572e6e05b620606b87a67e71d04cff6dbc99607801cb21bcaae1fb4fb84d4cc8e3fda725e95881329ef03dac602
+  languageName: node
+  linkType: hard
+
+"chalk@npm:^5.3.0":
+  version: 5.6.2
+  resolution: "chalk@npm:5.6.2"
+  checksum: 10c0/99a4b0f0e7991796b1e7e3f52dceb9137cae2a9dfc8fc0784a550dc4c558e15ab32ed70b14b21b52beb2679b4892b41a0aa44249bcb996f01e125d58477c6976
   languageName: node
   linkType: hard
 
@@ -657,6 +674,13 @@ __metadata:
     picomatch:
       optional: true
   checksum: 10c0/e345083c4306b3aed6cb8ec551e26c36bab5c511e99ea4576a16750ddc8d3240e63826cc624f5ae17ad4dc82e68a253213b60d556c11bfad064b7607847ed07f
+  languageName: node
+  linkType: hard
+
+"find-root@npm:^1.1.0":
+  version: 1.1.0
+  resolution: "find-root@npm:1.1.0"
+  checksum: 10c0/1abc7f3bf2f8d78ff26d9e00ce9d0f7b32e5ff6d1da2857bcdf4746134c422282b091c672cde0572cac3840713487e0a7a636af9aa1b74cb11894b447a521efa
   languageName: node
   linkType: hard
 
