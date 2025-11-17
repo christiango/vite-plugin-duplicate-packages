@@ -3,7 +3,15 @@
   "version": "0.0.0",
   "description": "Utilities for optimizing barrel files",
   "type": "module",
+  "main": "lib/index.js",
   "module": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc && tsc --project e2e-tests/tsconfig.json --noEmit",
     "test": "node --experimental-strip-types --test e2e-tests/**/*.e2e-test.ts",
