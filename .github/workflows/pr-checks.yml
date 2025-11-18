@@ -7,10 +7,16 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [22, 24]
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build and Test
+      - name: Build and Test (Node ${{ matrix.node-version }})
         uses: ./.github/actions/build-and-test
+        with:
+          node-version: ${{ matrix.node-version }}
+

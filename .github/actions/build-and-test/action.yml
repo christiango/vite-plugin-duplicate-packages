@@ -1,6 +1,12 @@
 name: 'Build and Test'
 description: 'Install dependencies, run prettier check, build, test, and bundle the project'
 
+inputs:
+  node-version:
+    description: 'Node.js version to use'
+    required: false
+    default: '24'
+
 runs:
   using: 'composite'
   steps:
@@ -11,7 +17,7 @@ runs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '24'
+        node-version: ${{ inputs.node-version }}
         cache: 'yarn'
 
     - name: Install dependencies
