@@ -9,12 +9,7 @@ import { duplicatePackagesPlugin } from '../lib/index.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-interface DevServerOptions {
-  plugins: Plugin[];
-  entrypoint?: string;
-}
-
-async function createDevServer(options: DevServerOptions): Promise<ViteDevServer> {
+async function createDevServer(plugins: Plugin[]): Promise<ViteDevServer> {
   const mockRepoPath = path.resolve(__dirname, 'mock-repo');
   const appPath = path.join(mockRepoPath, 'packages', 'app');
 
@@ -23,7 +18,7 @@ async function createDevServer(options: DevServerOptions): Promise<ViteDevServer
     server: {
       port: 0, // Random available port
     },
-    plugins: options.plugins,
+    plugins,
     logLevel: 'silent',
     // Disable dependency optimization so we can see the real node_modules paths
     optimizeDeps: {
@@ -36,29 +31,9 @@ async function createDevServer(options: DevServerOptions): Promise<ViteDevServer
   return server;
 }
 
-type CheckDuplicatesResult = {
-  duplicatePackageErrors: Array<{
-    packageName: string;
-    versions: string[];
-    maxAllowedVersionCount?: number;
-  }>;
-  unusedExceptions: string[];
-  hasIssues: boolean;
-};
-
-async function fetchCheckDuplicates(server: ViteDevServer): Promise<CheckDuplicatesResult> {
-  const address = server.httpServer?.address();
-  if (!address || typeof address === 'string') {
-    throw new Error('Server address not available');
-  }
-
-  const response = await fetch(`http://localhost:${address.port}/__check-duplicates`);
-  return response.json() as Promise<CheckDuplicatesResult>;
-}
-
 /**
- * Warm up the module graph by resolving and transforming modules.
- * This manually resolves all imports to populate the plugin's tracking.
+ * Warm up the module graph by resolving modules.
+ * This triggers the plugin's resolveId hook for doppelganger deduplication.
  */
 async function warmupModules(server: ViteDevServer, entrypoint: string): Promise<void> {
   const mockRepoPath = path.resolve(__dirname, 'mock-repo');
@@ -94,7 +69,8 @@ async function warmupModules(server: ViteDevServer, entrypoint: string): Promise
     try {
       const code = readFileSync(resolvedId, 'utf-8');
       // Simple regex to find imports - handles both import and require
-      const importRegex = /(?:import\s+(?:[\w*{}\s,]+\s+from\s+)?['"]([^'"]+)['"]|require\s*\(\s*['"]([^'"]+)['"]\s*\))/g;
+      const importRegex =
+        /(?:import\s+(?:[\w*{}\s,]+\s+from\s+)?['"]([^'"]+)['"]|require\s*\(\s*['"]([^'"]+)['"]\s*\))/g;
       let match;
       while ((match = importRegex.exec(code)) !== null) {
         const importSource = match[1] || match[2];
@@ -111,179 +87,104 @@ async function warmupModules(server: ViteDevServer, entrypoint: string): Promise
   await resolveImports(fullPath);
 }
 
-test('dev mode test 1 - plugin loads in dev mode when enabled', async () => {
-  const server = await createDevServer({
-    plugins: [duplicatePackagesPlugin({ enableInDev: true })],
-  });
-
-  try {
-    // Verify server is running and endpoint exists
-    const result = await fetchCheckDuplicates(server);
-    assert.ok(typeof result.hasIssues === 'boolean', 'Should return hasIssues boolean');
-    assert.ok(Array.isArray(result.duplicatePackageErrors), 'Should return duplicatePackageErrors array');
-    assert.ok(Array.isArray(result.unusedExceptions), 'Should return unusedExceptions array');
-  } finally {
-    await server.close();
-  }
-});
-
-test('dev mode test 2 - plugin is disabled in dev mode by default', async () => {
+test('dev mode test 1 - plugin does not apply in dev mode without deduplicateDoppelgangers', async () => {
   const server = await createServer({
     root: path.resolve(__dirname, 'mock-repo', 'packages', 'app'),
     server: { port: 0 },
-    plugins: [duplicatePackagesPlugin()], // No enableInDev, defaults to false
+    plugins: [duplicatePackagesPlugin()], // No deduplicateDoppelgangers
     logLevel: 'silent',
   });
 
   await server.listen();
 
   try {
-    const address = server.httpServer?.address();
-    if (!address || typeof address === 'string') {
-      throw new Error('Server address not available');
-    }
+    // Plugin should not be active, so resolving should work but no deduplication
+    const mockRepoPath = path.resolve(__dirname, 'mock-repo');
+    const appPath = path.join(mockRepoPath, 'packages', 'app');
+    const entryPath = path.join(appPath, 'withDuplicates.js');
 
-    // The endpoint should not exist when plugin is disabled in dev mode
-    const response = await fetch(`http://localhost:${address.port}/__check-duplicates`);
-    // When plugin is disabled, the middleware isn't added, so we get 404 or the default vite handler
-    assert.notStrictEqual(response.headers.get('content-type'), 'application/json');
+    // This should resolve without any plugin interference
+    const resolved = await server.pluginContainer.resolveId(entryPath);
+    assert.ok(resolved, 'Should be able to resolve entry file');
   } finally {
     await server.close();
   }
 });
 
-test('dev mode test 3 - detects duplicates after loading modules', async () => {
-  const server = await createDevServer({
-    plugins: [duplicatePackagesPlugin({ enableInDev: true })],
-  });
+test('dev mode test 2 - doppelganger deduplication works in dev mode', async () => {
+  const server = await createDevServer([
+    duplicatePackagesPlugin({
+      deduplicateDoppelgangers: true,
+    }),
+  ]);
 
   try {
-    // Load the entry module which imports dependencies with duplicates
+    // Load all modules to trigger doppelganger deduplication
     await warmupModules(server, 'withDuplicates.js');
 
-    // Check for duplicates
-    const result = await fetchCheckDuplicates(server);
+    // Now resolve dep-d from two different contexts and verify they resolve to the same path
+    const mockRepoPath = path.resolve(__dirname, 'mock-repo');
+    const appPath = path.join(mockRepoPath, 'packages', 'app');
 
-    // Should detect dep-a as having duplicate versions (1.0.0 and 2.0.0)
-    assert.ok(result.hasIssues, 'Should detect duplicate issues');
-    assert.ok(
-      result.duplicatePackageErrors.some((err) => err.packageName === 'dep-a'),
-      'Should detect dep-a as duplicate',
-    );
+    // dep-d is imported by both dep-a and dep-b
+    // With doppelganger deduplication, both should resolve to the same path
+    const depAPath = path.join(appPath, 'node_modules', 'dep-a', 'index.js');
+    const depBPath = path.join(appPath, 'node_modules', 'dep-b', 'index.js');
 
-    const depAError = result.duplicatePackageErrors.find((err) => err.packageName === 'dep-a');
-    assert.ok(depAError, 'dep-a should be in errors');
-    assert.ok(depAError.versions.includes('1.0.0'), 'Should include version 1.0.0');
-    assert.ok(depAError.versions.includes('2.0.0'), 'Should include version 2.0.0');
-  } finally {
-    await server.close();
-  }
-});
+    const depDFromA = await server.pluginContainer.resolveId('dep-d', depAPath);
+    const depDFromB = await server.pluginContainer.resolveId('dep-d', depBPath);
 
-test('dev mode test 4 - exceptions work in dev mode', async () => {
-  const server = await createDevServer({
-    plugins: [
-      duplicatePackagesPlugin({
-        enableInDev: true,
-        exceptions: {
-          'dep-a': { maxAllowedVersionCount: 2 },
-        },
-      }),
-    ],
-  });
+    assert.ok(depDFromA, 'Should resolve dep-d from dep-a');
+    assert.ok(depDFromB, 'Should resolve dep-d from dep-b');
 
-  try {
-    // Load the entry module
-    await warmupModules(server, 'withDuplicates.js');
+    const resolvedFromA = typeof depDFromA === 'string' ? depDFromA : depDFromA.id;
+    const resolvedFromB = typeof depDFromB === 'string' ? depDFromB : depDFromB.id;
 
-    // Check for duplicates
-    const result = await fetchCheckDuplicates(server);
-
-    // dep-a should NOT be in errors due to exception
-    assert.ok(
-      !result.duplicatePackageErrors.some((err) => err.packageName === 'dep-a'),
-      'dep-a should not be in errors due to exception',
+    // Both should resolve to the same canonical path (doppelganger eliminated)
+    assert.strictEqual(
+      resolvedFromA,
+      resolvedFromB,
+      'dep-d should resolve to the same path from both dep-a and dep-b (doppelganger deduplicated)',
     );
   } finally {
     await server.close();
   }
 });
 
-test('dev mode test 5 - doppelganger deduplication works in dev mode', async () => {
-  const server = await createDevServer({
-    plugins: [
-      duplicatePackagesPlugin({
-        enableInDev: true,
-        deduplicateDoppelgangers: true,
-        exceptions: {
-          'dep-a': { maxAllowedVersionCount: 2 },
-        },
-      }),
-    ],
-  });
+test('dev mode test 3 - different versions are not deduplicated', async () => {
+  const server = await createDevServer([
+    duplicatePackagesPlugin({
+      deduplicateDoppelgangers: true,
+    }),
+  ]);
 
   try {
-    // Load the entry module
+    // Load all modules
     await warmupModules(server, 'withDuplicates.js');
 
-    // Check the duplicates endpoint - dep-d should NOT be reported as a duplicate
-    // because the doppelgangers (same version from different paths) were deduplicated
-    const result = await fetchCheckDuplicates(server);
+    const mockRepoPath = path.resolve(__dirname, 'mock-repo');
+    const appPath = path.join(mockRepoPath, 'packages', 'app');
 
-    // dep-d@1.0.0 exists in both dep-a's node_modules and dep-b's node_modules
-    // With deduplication enabled, it should resolve to a single path
-    // and therefore NOT appear in duplicate errors
-    assert.ok(
-      !result.duplicatePackageErrors.some((err) => err.packageName === 'dep-d'),
-      'dep-d should not appear in duplicate errors (doppelgangers deduplicated)',
+    // dep-a has two versions: v2.0.0 in app/node_modules and v1.0.0 in dep-b/node_modules
+    // These are different versions, so they should NOT be deduplicated
+    const entryPath = path.join(appPath, 'withDuplicates.js');
+    const depBPath = path.join(appPath, 'node_modules', 'dep-b', 'index.js');
+
+    const depAFromEntry = await server.pluginContainer.resolveId('dep-a', entryPath);
+    const depAFromDepB = await server.pluginContainer.resolveId('dep-a', depBPath);
+
+    assert.ok(depAFromEntry, 'Should resolve dep-a from entry');
+    assert.ok(depAFromDepB, 'Should resolve dep-a from dep-b');
+
+    const resolvedFromEntry = typeof depAFromEntry === 'string' ? depAFromEntry : depAFromEntry.id;
+    const resolvedFromDepB = typeof depAFromDepB === 'string' ? depAFromDepB : depAFromDepB.id;
+
+    // These should be DIFFERENT paths because they are different versions
+    assert.notStrictEqual(
+      resolvedFromEntry,
+      resolvedFromDepB,
+      'dep-a v2.0.0 and dep-a v1.0.0 should resolve to different paths (different versions)',
     );
-  } finally {
-    await server.close();
-  }
-});
-
-test('dev mode test 6 - no duplicates scenario', async () => {
-  const server = await createDevServer({
-    plugins: [duplicatePackagesPlugin({ enableInDev: true })],
-  });
-
-  try {
-    // Load the clean entry module that only imports dep-c
-    await warmupModules(server, 'noDuplicateViolations.js');
-
-    // Check for duplicates
-    const result = await fetchCheckDuplicates(server);
-
-    // Should not have any duplicate issues
-    assert.strictEqual(result.hasIssues, false, 'Should not have any duplicate issues');
-    assert.strictEqual(result.duplicatePackageErrors.length, 0, 'Should have no duplicate package errors');
-  } finally {
-    await server.close();
-  }
-});
-
-test('dev mode test 7 - unused exceptions detected in dev mode', async () => {
-  const server = await createDevServer({
-    plugins: [
-      duplicatePackagesPlugin({
-        enableInDev: true,
-        exceptions: {
-          'nonexistent-package': { maxAllowedVersionCount: 2 },
-        },
-      }),
-    ],
-  });
-
-  try {
-    // Load the clean entry module
-    await warmupModules(server, 'noDuplicateViolations.js');
-
-    // Check for duplicates
-    const result = await fetchCheckDuplicates(server);
-
-    // Should detect unused exception
-    assert.ok(result.hasIssues, 'Should have issues due to unused exception');
-    assert.ok(result.unusedExceptions.includes('nonexistent-package'), 'Should report unused exception');
   } finally {
     await server.close();
   }
