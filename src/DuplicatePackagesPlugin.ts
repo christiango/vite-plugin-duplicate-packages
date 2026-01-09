@@ -1,4 +1,4 @@
-import type { Plugin } from 'vite' with { 'resolution-mode': 'import' };
+import type { Plugin, ViteDevServer, ModuleGraph } from 'vite' with { 'resolution-mode': 'import' };
 import { join, resolve, normalize } from 'path';
 import findRoot from 'find-root';
 import chalk from 'chalk';
@@ -18,6 +18,13 @@ export interface DuplicatePackagesConfig {
    * Automatically deduplicate NPM/Yarn doppelgangers https://rushjs.io/pages/advanced/npm_doppelgangers/
    */
   deduplicateDoppelgangers?: boolean;
+
+  /**
+   * Enable duplicate detection in dev mode. Default: true
+   * Note: Dev mode detection only analyzes modules that have been loaded.
+   * Run a production build for comprehensive analysis.
+   */
+  enableInDev?: boolean;
 }
 
 export interface PackageInfo {
@@ -27,6 +34,17 @@ export interface PackageInfo {
 
   /** The root path for the package json file being bundled */
   rootPath: string;
+}
+
+interface DuplicatePackageError {
+  packageName: string;
+  versions: Set<string>;
+  maxAllowedVersionCount?: number;
+}
+
+interface DuplicateAnalysisResult {
+  duplicatePackageErrors: DuplicatePackageError[];
+  unusedExceptions: Set<string>;
 }
 
 function getPackageJsonForPath(path: string): PackageInfo | undefined {
@@ -55,9 +73,103 @@ function getPackageJsonForPath(path: string): PackageInfo | undefined {
 }
 
 /**
- * Vite plugin that helps
- * @param config
- * @returns
+ * Analyzes a collection of module IDs for duplicate packages.
+ * Shared logic between build mode (generateBundle) and dev mode (moduleGraph).
+ */
+function analyzeForDuplicates(
+  moduleIds: Iterable<string>,
+  config?: DuplicatePackagesConfig,
+): DuplicateAnalysisResult {
+  const packagesMap = new Map<string, { versions: Set<string> }>();
+
+  for (const moduleId of moduleIds) {
+    if (!moduleId.includes('node_modules')) {
+      continue;
+    }
+
+    const packageInfo = getPackageJsonForPath(moduleId);
+    if (packageInfo) {
+      const packageEntryInMap = packagesMap.get(packageInfo.name) ?? { versions: new Set<string>() };
+      packageEntryInMap.versions.add(packageInfo.version);
+      packagesMap.set(packageInfo.name, packageEntryInMap);
+    }
+  }
+
+  const duplicatePackageErrors: DuplicatePackageError[] = [];
+  const unusedExceptions = new Set<string>(Object.keys(config?.exceptions ?? {}));
+
+  for (const [packageName, packageInfo] of packagesMap.entries()) {
+    // Remove from unused exceptions since we found this package in the bundle
+    unusedExceptions.delete(packageName);
+
+    if (packageInfo.versions.size > 1) {
+      const relevantException = config?.exceptions?.[packageName];
+
+      if (!relevantException || packageInfo.versions.size > relevantException.maxAllowedVersionCount) {
+        duplicatePackageErrors.push({
+          packageName,
+          versions: packageInfo.versions,
+          maxAllowedVersionCount: relevantException?.maxAllowedVersionCount,
+        });
+      }
+    }
+  }
+
+  return { duplicatePackageErrors, unusedExceptions };
+}
+
+/**
+ * Analyzes Vite's ModuleGraph for duplicate packages.
+ * Used in dev mode where there is no bundle to analyze.
+ */
+function analyzeModuleGraph(moduleGraph: ModuleGraph, config?: DuplicatePackagesConfig): DuplicateAnalysisResult {
+  const moduleIds: string[] = [];
+
+  for (const mod of moduleGraph.idToModuleMap.values()) {
+    if (mod.id) {
+      moduleIds.push(mod.id);
+    }
+  }
+
+  return analyzeForDuplicates(moduleIds, config);
+}
+
+/**
+ * Formats duplicate analysis results into a human-readable message.
+ */
+function formatDuplicateMessage(result: DuplicateAnalysisResult): string {
+  const parts: string[] = [];
+
+  if (result.duplicatePackageErrors.length > 0) {
+    const duplicateDetails = result.duplicatePackageErrors
+      .map(({ packageName, versions, maxAllowedVersionCount }) => {
+        const versionList = Array.from(versions).join(', ');
+        const exceptionNote =
+          maxAllowedVersionCount !== undefined
+            ? ` (exception allows max ${maxAllowedVersionCount}, found ${versions.size})`
+            : '';
+        return `  - ${packageName}: ${versionList}${exceptionNote}`;
+      })
+      .join('\n');
+
+    parts.push(`Duplicate packages detected:\n${duplicateDetails}`);
+  }
+
+  if (result.unusedExceptions.size > 0) {
+    const unusedDetails = Array.from(result.unusedExceptions)
+      .map((packageName) => `  - ${packageName}`)
+      .join('\n');
+
+    parts.push(`Unused duplicate package exceptions:\n${unusedDetails}`);
+  }
+
+  return parts.join('\n\n');
+}
+
+/**
+ * Vite plugin that detects and optionally deduplicates duplicate packages in both build and dev modes.
+ * @param config Plugin configuration
+ * @returns Vite plugin
  */
 export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugin {
   interface DoppelgangerInfo {
@@ -66,14 +178,25 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
   }
   const doppelgangerMap = new Map<string, DoppelgangerInfo>();
 
+  // Track all resolved module IDs for dev mode analysis
+  // This captures modules resolved through both client and SSR paths
+  const resolvedModuleIds = new Set<string>();
+
   return {
     name: 'vite-duplicate-package-plugin',
-    apply: 'build', // Only run on the build, not during dev server
+    apply: (_, { command }) => {
+      // Always apply in build mode
+      if (command === 'build') {
+        return true;
+      }
+      // In serve mode, apply if enableInDev is not explicitly false
+      return config?.enableInDev !== false;
+    },
     enforce: 'pre',
 
-    // Doppelganger deduplication happens during module resolution
+    // Track all resolved modules and optionally deduplicate doppelgangers
     async resolveId(source, importer, options) {
-      if (!config?.deduplicateDoppelgangers || !importer || source.startsWith('\0')) {
+      if (!importer || source.startsWith('\0')) {
         return null;
       }
 
@@ -84,72 +207,89 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
         return null;
       }
 
+      // Track all resolved node_modules for dev mode analysis
+      resolvedModuleIds.add(resolved.id);
+
       const packageInfo = getPackageJsonForPath(resolved.id);
       if (!packageInfo) {
         return null;
       }
 
-      const packageId = `${packageInfo.name}@${packageInfo.version}`;
-      const match = doppelgangerMap.get(packageId);
+      // Doppelganger deduplication (only when enabled)
+      if (config?.deduplicateDoppelgangers) {
+        const packageId = `${packageInfo.name}@${packageInfo.version}`;
+        const match = doppelgangerMap.get(packageId);
 
-      if (match && match.resolveToPath !== packageInfo.rootPath) {
-        // Doppelganger found - redirect to canonical path
-        match.paths.add(packageInfo.rootPath);
+        if (match && match.resolveToPath !== packageInfo.rootPath) {
+          // Doppelganger found - redirect to canonical path
+          match.paths.add(packageInfo.rootPath);
 
-        // Normalize paths to handle Windows path separator mismatch
-        // resolved.id uses forward slashes, but packageInfo.rootPath may use backslashes on Windows
-        const normalizedOriginalPath = packageInfo.rootPath.replace(/\\/g, '/');
-        const normalizedCanonicalPath = match.resolveToPath.replace(/\\/g, '/');
-        const redirectedId = resolved.id.replace(normalizedOriginalPath, normalizedCanonicalPath);
+          // Normalize paths to handle Windows path separator mismatch
+          // resolved.id uses forward slashes, but packageInfo.rootPath may use backslashes on Windows
+          const normalizedOriginalPath = packageInfo.rootPath.replace(/\\/g, '/');
+          const normalizedCanonicalPath = match.resolveToPath.replace(/\\/g, '/');
+          const redirectedId = resolved.id.replace(normalizedOriginalPath, normalizedCanonicalPath);
 
-        return redirectedId;
-      } else if (!match) {
-        // First occurrence - store as canonical
-        doppelgangerMap.set(packageId, {
-          resolveToPath: packageInfo.rootPath,
-          paths: new Set([packageInfo.rootPath]),
-        });
+          return redirectedId;
+        } else if (!match) {
+          // First occurrence - store as canonical
+          doppelgangerMap.set(packageId, {
+            resolveToPath: packageInfo.rootPath,
+            paths: new Set([packageInfo.rootPath]),
+          });
+        }
       }
 
       return null;
     },
 
+    // Dev mode: configure server with duplicate check endpoint
+    configureServer(server: ViteDevServer) {
+      // Add endpoint for on-demand duplicate checking
+      server.middlewares.use('/__check-duplicates', (_req, res) => {
+        // Combine module IDs from both the client module graph and our tracked resolutions
+        const allModuleIds = new Set<string>(resolvedModuleIds);
+
+        // Also add modules from the client module graph
+        for (const mod of server.moduleGraph.idToModuleMap.values()) {
+          if (mod.id) {
+            allModuleIds.add(mod.id);
+          }
+        }
+
+        const result = analyzeForDuplicates(allModuleIds, config);
+        const hasIssues = result.duplicatePackageErrors.length > 0 || result.unusedExceptions.size > 0;
+
+        // Convert Sets to arrays for JSON serialization
+        const jsonResult = {
+          duplicatePackageErrors: result.duplicatePackageErrors.map((err) => ({
+            ...err,
+            versions: Array.from(err.versions),
+          })),
+          unusedExceptions: Array.from(result.unusedExceptions),
+          hasIssues,
+        };
+
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(jsonResult, null, 2));
+      });
+
+      // Return post-hook that runs after internal middlewares are added
+      return () => {
+        console.log(chalk.cyan('\n  Duplicate Package Check: visit /__check-duplicates to analyze loaded modules\n'));
+      };
+    },
+
     generateBundle(_, bundle) {
       // Analyze the bundle for multiple versions of the same package
-      // Map of the package name to the versions of that package found in the bundle
-      const packagesMap = new Map<string, { versions: Set<string> }>();
-      for (const [_, fileInfo] of Object.entries(bundle)) {
+      const moduleIds: string[] = [];
+      for (const [, fileInfo] of Object.entries(bundle)) {
         if (fileInfo.type === 'chunk') {
-          for (const moduleId of Object.keys(fileInfo.modules)) {
-            const packageInfo = getPackageJsonForPath(moduleId);
-            if (packageInfo) {
-              const packageEntryInMap = packagesMap.get(packageInfo.name) ?? { versions: new Set<string>() };
-              packageEntryInMap.versions.add(packageInfo.version);
-              packagesMap.set(packageInfo.name, packageEntryInMap);
-            }
-          }
+          moduleIds.push(...Object.keys(fileInfo.modules));
         }
       }
 
-      const duplicatePackageErrors: { packageName: string; versions: Set<string>; maxAllowedVersionCount?: number }[] =
-        [];
-      const unusedExceptions = new Set<string>(Object.keys(config?.exceptions ?? {}));
-      for (const [packageName, packageInfo] of packagesMap.entries()) {
-        // Remove from unused exceptions since we found this package in the bundle
-        unusedExceptions.delete(packageName);
-
-        if (packageInfo.versions.size > 1) {
-          const relevantException = config?.exceptions?.[packageName];
-
-          if (!relevantException || packageInfo.versions.size > relevantException.maxAllowedVersionCount) {
-            duplicatePackageErrors.push({
-              packageName,
-              versions: packageInfo.versions,
-              maxAllowedVersionCount: relevantException?.maxAllowedVersionCount,
-            });
-          }
-        }
-      }
+      const { duplicatePackageErrors, unusedExceptions } = analyzeForDuplicates(moduleIds, config);
 
       const hasErrors = duplicatePackageErrors.length > 0 || unusedExceptions.size > 0;
 
@@ -164,7 +304,7 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
                 maxAllowedVersionCount !== undefined
                   ? ` (exception allows max ${maxAllowedVersionCount}, found ${versions.size})`
                   : '';
-              return `  • ${packageName}: ${versionList}${exceptionNote}`;
+              return `  \u2022 ${packageName}: ${versionList}${exceptionNote}`;
             })
             .join('\n');
 
@@ -175,7 +315,7 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
 
         if (unusedExceptions.size > 0) {
           const unusedDetails = Array.from(unusedExceptions)
-            .map((packageName) => `  • ${packageName}`)
+            .map((packageName) => `  \u2022 ${packageName}`)
             .join('\n');
 
           errorParts.push(
@@ -200,3 +340,7 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
     },
   };
 }
+
+// Export utility functions for testing
+export { analyzeModuleGraph, analyzeForDuplicates, formatDuplicateMessage };
+export type { DuplicateAnalysisResult, DuplicatePackageError };
