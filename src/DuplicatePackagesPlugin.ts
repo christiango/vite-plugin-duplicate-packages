@@ -1,4 +1,4 @@
-import type { Plugin, ViteDevServer, ModuleGraph } from 'vite' with { 'resolution-mode': 'import' };
+import type { Plugin, ViteDevServer } from 'vite' with { 'resolution-mode': 'import' };
 import { join, resolve, normalize } from 'path';
 import findRoot from 'find-root';
 import chalk from 'chalk';
@@ -76,10 +76,7 @@ function getPackageJsonForPath(path: string): PackageInfo | undefined {
  * Analyzes a collection of module IDs for duplicate packages.
  * Shared logic between build mode (generateBundle) and dev mode (moduleGraph).
  */
-function analyzeForDuplicates(
-  moduleIds: Iterable<string>,
-  config?: DuplicatePackagesConfig,
-): DuplicateAnalysisResult {
+function analyzeForDuplicates(moduleIds: Iterable<string>, config?: DuplicatePackagesConfig): DuplicateAnalysisResult {
   const packagesMap = new Map<string, { versions: Set<string> }>();
 
   for (const moduleId of moduleIds) {
@@ -116,54 +113,6 @@ function analyzeForDuplicates(
   }
 
   return { duplicatePackageErrors, unusedExceptions };
-}
-
-/**
- * Analyzes Vite's ModuleGraph for duplicate packages.
- * Used in dev mode where there is no bundle to analyze.
- */
-function analyzeModuleGraph(moduleGraph: ModuleGraph, config?: DuplicatePackagesConfig): DuplicateAnalysisResult {
-  const moduleIds: string[] = [];
-
-  for (const mod of moduleGraph.idToModuleMap.values()) {
-    if (mod.id) {
-      moduleIds.push(mod.id);
-    }
-  }
-
-  return analyzeForDuplicates(moduleIds, config);
-}
-
-/**
- * Formats duplicate analysis results into a human-readable message.
- */
-function formatDuplicateMessage(result: DuplicateAnalysisResult): string {
-  const parts: string[] = [];
-
-  if (result.duplicatePackageErrors.length > 0) {
-    const duplicateDetails = result.duplicatePackageErrors
-      .map(({ packageName, versions, maxAllowedVersionCount }) => {
-        const versionList = Array.from(versions).join(', ');
-        const exceptionNote =
-          maxAllowedVersionCount !== undefined
-            ? ` (exception allows max ${maxAllowedVersionCount}, found ${versions.size})`
-            : '';
-        return `  - ${packageName}: ${versionList}${exceptionNote}`;
-      })
-      .join('\n');
-
-    parts.push(`Duplicate packages detected:\n${duplicateDetails}`);
-  }
-
-  if (result.unusedExceptions.size > 0) {
-    const unusedDetails = Array.from(result.unusedExceptions)
-      .map((packageName) => `  - ${packageName}`)
-      .join('\n');
-
-    parts.push(`Unused duplicate package exceptions:\n${unusedDetails}`);
-  }
-
-  return parts.join('\n\n');
 }
 
 /**
@@ -340,7 +289,3 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
     },
   };
 }
-
-// Export utility functions for testing
-export { analyzeModuleGraph, analyzeForDuplicates, formatDuplicateMessage };
-export type { DuplicateAnalysisResult, DuplicatePackageError };
