@@ -87,31 +87,45 @@ async function warmupModules(server: ViteDevServer, entrypoint: string): Promise
   await resolveImports(fullPath);
 }
 
-test('dev mode test 1 - plugin does not apply in dev mode without deduplicateDoppelgangers', async () => {
-  const server = await createServer({
-    root: path.resolve(__dirname, 'mock-repo', 'packages', 'app'),
-    server: { port: 0 },
-    plugins: [duplicatePackagesPlugin()], // No deduplicateDoppelgangers
-    logLevel: 'silent',
-  });
-
-  await server.listen();
+test('without deduplicateDoppelgangers, doppelgangers are NOT deduplicated', async () => {
+  const server = await createDevServer([
+    duplicatePackagesPlugin(), // No deduplicateDoppelgangers - plugin won't apply in dev mode
+  ]);
 
   try {
-    // Plugin should not be active, so resolving should work but no deduplication
     const mockRepoPath = path.resolve(__dirname, 'mock-repo');
     const appPath = path.join(mockRepoPath, 'packages', 'app');
-    const entryPath = path.join(appPath, 'withDuplicates.js');
 
-    // This should resolve without any plugin interference
-    const resolved = await server.pluginContainer.resolveId(entryPath);
-    assert.ok(resolved, 'Should be able to resolve entry file');
+    // dep-d is imported by both dep-a and dep-b (same version 1.0.0)
+    // Without deduplication, they should resolve to DIFFERENT paths (duplicates remain)
+    const depAPath = path.join(appPath, 'node_modules', 'dep-a', 'index.js');
+    const depBPath = path.join(appPath, 'node_modules', 'dep-b', 'index.js');
+
+    const depDFromA = await server.pluginContainer.resolveId('dep-d', depAPath);
+    const depDFromB = await server.pluginContainer.resolveId('dep-d', depBPath);
+
+    assert.ok(depDFromA, 'Should resolve dep-d from dep-a');
+    assert.ok(depDFromB, 'Should resolve dep-d from dep-b');
+
+    const resolvedFromA = typeof depDFromA === 'string' ? depDFromA : depDFromA.id;
+    const resolvedFromB = typeof depDFromB === 'string' ? depDFromB : depDFromB.id;
+
+    // Without deduplication, they should resolve to DIFFERENT paths (doppelgangers remain)
+    assert.notStrictEqual(
+      resolvedFromA,
+      resolvedFromB,
+      'Without deduplication, dep-d should resolve to different paths (doppelgangers NOT deduplicated)',
+    );
+
+    // Verify they are indeed different nested paths
+    assert.ok(resolvedFromA.includes('dep-a'), 'dep-d from dep-a should be in dep-a node_modules');
+    assert.ok(resolvedFromB.includes('dep-b'), 'dep-d from dep-b should be in dep-b node_modules');
   } finally {
     await server.close();
   }
 });
 
-test('dev mode test 2 - doppelganger deduplication works in dev mode', async () => {
+test('doppelganger deduplication works in dev mode', async () => {
   const server = await createDevServer([
     duplicatePackagesPlugin({
       deduplicateDoppelgangers: true,
