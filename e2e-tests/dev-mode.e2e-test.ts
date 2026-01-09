@@ -111,9 +111,9 @@ async function warmupModules(server: ViteDevServer, entrypoint: string): Promise
   await resolveImports(fullPath);
 }
 
-test('dev mode test 1 - plugin loads in dev mode by default', async () => {
+test('dev mode test 1 - plugin loads in dev mode when enabled', async () => {
   const server = await createDevServer({
-    plugins: [duplicatePackagesPlugin()],
+    plugins: [duplicatePackagesPlugin({ enableInDev: true })],
   });
 
   try {
@@ -127,11 +127,11 @@ test('dev mode test 1 - plugin loads in dev mode by default', async () => {
   }
 });
 
-test('dev mode test 2 - plugin can be disabled in dev mode', async () => {
+test('dev mode test 2 - plugin is disabled in dev mode by default', async () => {
   const server = await createServer({
     root: path.resolve(__dirname, 'mock-repo', 'packages', 'app'),
     server: { port: 0 },
-    plugins: [duplicatePackagesPlugin({ enableInDev: false })],
+    plugins: [duplicatePackagesPlugin()], // No enableInDev, defaults to false
     logLevel: 'silent',
   });
 
@@ -154,7 +154,7 @@ test('dev mode test 2 - plugin can be disabled in dev mode', async () => {
 
 test('dev mode test 3 - detects duplicates after loading modules', async () => {
   const server = await createDevServer({
-    plugins: [duplicatePackagesPlugin()],
+    plugins: [duplicatePackagesPlugin({ enableInDev: true })],
   });
 
   try {
@@ -184,6 +184,7 @@ test('dev mode test 4 - exceptions work in dev mode', async () => {
   const server = await createDevServer({
     plugins: [
       duplicatePackagesPlugin({
+        enableInDev: true,
         exceptions: {
           'dep-a': { maxAllowedVersionCount: 2 },
         },
@@ -212,6 +213,7 @@ test('dev mode test 5 - doppelganger deduplication works in dev mode', async () 
   const server = await createDevServer({
     plugins: [
       duplicatePackagesPlugin({
+        enableInDev: true,
         deduplicateDoppelgangers: true,
         exceptions: {
           'dep-a': { maxAllowedVersionCount: 2 },
@@ -242,7 +244,7 @@ test('dev mode test 5 - doppelganger deduplication works in dev mode', async () 
 
 test('dev mode test 6 - no duplicates scenario', async () => {
   const server = await createDevServer({
-    plugins: [duplicatePackagesPlugin()],
+    plugins: [duplicatePackagesPlugin({ enableInDev: true })],
   });
 
   try {
@@ -264,6 +266,7 @@ test('dev mode test 7 - unused exceptions detected in dev mode', async () => {
   const server = await createDevServer({
     plugins: [
       duplicatePackagesPlugin({
+        enableInDev: true,
         exceptions: {
           'nonexistent-package': { maxAllowedVersionCount: 2 },
         },

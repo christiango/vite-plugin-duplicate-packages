@@ -20,7 +20,7 @@ export interface DuplicatePackagesConfig {
   deduplicateDoppelgangers?: boolean;
 
   /**
-   * Enable duplicate detection in dev mode. Default: true
+   * Enable duplicate detection in dev mode. Default: false
    * Note: Dev mode detection only analyzes modules that have been loaded.
    * Run a production build for comprehensive analysis.
    */
@@ -138,8 +138,8 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
       if (command === 'build') {
         return true;
       }
-      // In serve mode, apply if enableInDev is not explicitly false
-      return config?.enableInDev !== false;
+      // In serve mode, only apply if enableInDev is explicitly true
+      return config?.enableInDev === true;
     },
     enforce: 'pre',
 
