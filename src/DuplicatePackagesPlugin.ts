@@ -157,7 +157,8 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
         }
       }
 
-      const hasErrors = duplicatePackageErrors.length > 0 || (unusedExceptions.size > 0 && !config?.allowUnusedExceptions);
+      const hasErrors =
+        duplicatePackageErrors.length > 0 || (unusedExceptions.size > 0 && !config?.allowUnusedExceptions);
 
       if (hasErrors) {
         const errorParts: string[] = [];
