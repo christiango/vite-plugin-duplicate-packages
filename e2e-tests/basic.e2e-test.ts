@@ -337,3 +337,18 @@ These duplicate package exceptions are not used. Please remove them from your co
     'Should throw an error with both duplicate package and unused exception messages',
   );
 });
+
+test('e2e test 8 - plugin with allowUnusedExceptions: should not throw error for unused exception', async () => {
+  await buildAndVerify({
+    outDirName: 'dist-test8',
+    plugins: [
+      duplicatePackagesPlugin({
+        allowUnusedExceptions: true,
+        exceptions: {
+          'dep-2': { maxAllowedVersionCount: 2 },
+        },
+      }),
+    ],
+    entrypoint: 'noDuplicateViolations.js',
+  });
+});

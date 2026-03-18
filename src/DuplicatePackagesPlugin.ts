@@ -15,6 +15,12 @@ export interface DuplicatePackagesConfig {
   };
 
   /**
+   * When true, exceptions configured in `exceptions` that are never matched by a package in the bundle will not cause an error.
+   * Useful when exceptions are shared across multiple builds where not all packages appear in every bundle.
+   */
+  allowUnusedExceptions?: boolean;
+
+  /**
    * Automatically deduplicate NPM/Yarn doppelgangers https://rushjs.io/pages/advanced/npm_doppelgangers/
    */
   deduplicateDoppelgangers?: boolean;
@@ -151,7 +157,8 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
         }
       }
 
-      const hasErrors = duplicatePackageErrors.length > 0 || unusedExceptions.size > 0;
+      const hasErrors =
+        duplicatePackageErrors.length > 0 || (unusedExceptions.size > 0 && !config?.allowUnusedExceptions);
 
       if (hasErrors) {
         const errorParts: string[] = [];
@@ -173,7 +180,7 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
           );
         }
 
-        if (unusedExceptions.size > 0) {
+        if (unusedExceptions.size > 0 && !config?.allowUnusedExceptions) {
           const unusedDetails = Array.from(unusedExceptions)
             .map((packageName) => `  • ${packageName}`)
             .join('\n');
