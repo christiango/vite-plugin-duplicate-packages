@@ -4,15 +4,27 @@ import findRoot from 'find-root';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
 
+export interface DuplicatePackageException {
+  /** Maximum number of different versions to allow. Will not error if count is less than max, but will error if there are no duplicates */
+  maxAllowedVersionCount: number;
+
+  /** If set, this exception only applies when the plugin's compilationName matches one of these values. Omit to apply to all compilations. */
+  compilations?: string[];
+}
+
 export interface DuplicatePackagesConfig {
   /** There are some cases where duplication cannot be avoided in a bundle. Use this to add specific exceptions to the no duplicate packages policy. */
   exceptions?: {
     /** Map of package name to exceptions. */
-    [packageName: string]: {
-      /* Maximum number of different versions to allow. Will not error if count is less than max, but will error if there are no duplicates */
-      maxAllowedVersionCount: number;
-    };
+    [packageName: string]: DuplicatePackageException;
   };
+
+  /**
+   * Identifies this compilation (e.g., 'client', 'server', 'ssr').
+   * Used to scope exceptions via the `compilations` field on individual exceptions.
+   * If omitted, auto-detected from Vite's resolved config ('ssr' if SSR build, 'client' otherwise).
+   */
+  compilationName?: string;
 
   /**
    * When true, exceptions configured in `exceptions` that are never matched by a package in the bundle will not cause an error.
@@ -72,6 +84,22 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
   }
   const doppelgangerMap = new Map<string, DoppelgangerInfo>();
 
+  function getCompilationName(hookContext: Record<string, unknown>): string | undefined {
+    if (config?.compilationName !== undefined) return config.compilationName;
+    // In Vite 6+ with the environment API, this.environment.name gives the current environment
+    const env = hookContext.environment;
+    if (env && typeof env === 'object' && 'name' in env && typeof env.name === 'string') {
+      return env.name;
+    }
+    return undefined;
+  }
+
+  function isExceptionInScope(exception: DuplicatePackageException, compilationName: string | undefined): boolean {
+    if (!exception.compilations) return true;
+    if (!compilationName) return true;
+    return exception.compilations.includes(compilationName);
+  }
+
   return {
     name: 'vite-duplicate-package-plugin',
     apply: 'build', // Only run on the build, not during dev server
@@ -121,6 +149,8 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
     },
 
     generateBundle(_, bundle) {
+      const compilationName = getCompilationName(this as unknown as Record<string, unknown>);
+
       // Analyze the bundle for multiple versions of the same package
       // Map of the package name to the versions of that package found in the bundle
       const packagesMap = new Map<string, { versions: Set<string> }>();
@@ -139,19 +169,25 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
 
       const duplicatePackageErrors: { packageName: string; versions: Set<string>; maxAllowedVersionCount?: number }[] =
         [];
-      const unusedExceptions = new Set<string>(Object.keys(config?.exceptions ?? {}));
+      // Only track in-scope exceptions for unused detection
+      const unusedExceptions = new Set<string>(
+        Object.entries(config?.exceptions ?? {})
+          .filter(([_, exc]) => isExceptionInScope(exc, compilationName))
+          .map(([name]) => name),
+      );
       for (const [packageName, packageInfo] of packagesMap.entries()) {
         // Remove from unused exceptions since we found this package in the bundle
         unusedExceptions.delete(packageName);
 
         if (packageInfo.versions.size > 1) {
           const relevantException = config?.exceptions?.[packageName];
+          const inScope = relevantException && isExceptionInScope(relevantException, compilationName);
 
-          if (!relevantException || packageInfo.versions.size > relevantException.maxAllowedVersionCount) {
+          if (!inScope || packageInfo.versions.size > relevantException.maxAllowedVersionCount) {
             duplicatePackageErrors.push({
               packageName,
               versions: packageInfo.versions,
-              maxAllowedVersionCount: relevantException?.maxAllowedVersionCount,
+              maxAllowedVersionCount: inScope ? relevantException.maxAllowedVersionCount : undefined,
             });
           }
         }
@@ -175,8 +211,9 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
             })
             .join('\n');
 
+          const compilationLabel = compilationName ? ` (compilation: ${compilationName})` : '';
           errorParts.push(
-            `Duplicate packages detected in bundle:\n\n${duplicateDetails}\n\nMultiple versions of the same package can cause runtime errors and increase bundle size.`,
+            `Duplicate packages detected in bundle${compilationLabel}:\n\n${duplicateDetails}\n\nMultiple versions of the same package can cause runtime errors and increase bundle size.`,
           );
         }
 
@@ -185,8 +222,9 @@ export function duplicatePackagesPlugin(config?: DuplicatePackagesConfig): Plugi
             .map((packageName) => `  • ${packageName}`)
             .join('\n');
 
+          const compilationLabel = compilationName ? ` (compilation: ${compilationName})` : '';
           errorParts.push(
-            `Unused duplicate package exceptions:\n\n${unusedDetails}\n\nThese duplicate package exceptions are not used. Please remove them from your configuration to vite-plugin-duplicate-packages.`,
+            `Unused duplicate package exceptions${compilationLabel}:\n\n${unusedDetails}\n\nThese duplicate package exceptions are not used. Please remove them from your configuration to vite-plugin-duplicate-packages.`,
           );
         }
 
