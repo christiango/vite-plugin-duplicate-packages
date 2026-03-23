@@ -56,10 +56,12 @@ The plugin will deduplicate the two instances of `package-a@1.0.0`, reducing you
 
 ### `exceptions`
 
-- **Type:** `{ [packageName: string]: { maxAllowedVersionCount: number } }`
+- **Type:** `{ [packageName: string]: { maxAllowedVersionCount: number; compilations?: string[] } }`
 - **Default:** `{}`
 
 Configure exceptions for packages that are allowed to have multiple versions in the bundle. This is useful for cases where duplicate packages cannot be avoided.
+
+Each exception can optionally specify a `compilations` array to limit which compilations the exception applies to (see [`compilationName`](#compilationname) below). Omit `compilations` to apply the exception to all compilations.
 
 **Example:**
 
@@ -67,18 +69,59 @@ Configure exceptions for packages that are allowed to have multiple versions in 
 duplicatePackagesPlugin({
   exceptions: {
     react: { maxAllowedVersionCount: 2 },
-    lodash: { maxAllowedVersionCount: 3 },
+    lodash: { maxAllowedVersionCount: 3, compilations: ['client'] },
   },
 });
 ```
 
 With this configuration:
 
-- `react` can have up to 2 versions in the bundle without causing an error
-- `lodash` can have up to 3 versions in the bundle without causing an error
+- `react` can have up to 2 versions in the bundle without causing an error (in any compilation)
+- `lodash` can have up to 3 versions without error, but only during `client` compilations
 - Any other package with multiple versions will cause a build error
 
-**Important:** The plugin will throw an error if you define an exception for a package that is not found in the bundle or doesn't have duplicates. This helps keep your configuration clean and up-to-date.
+**Important:** The plugin will throw an error if you define an exception for a package that is not found in the bundle or doesn't have duplicates. This helps keep your configuration clean and up-to-date. Exceptions scoped to a different compilation via `compilations` are excluded from this check.
+
+### `compilationName`
+
+- **Type:** `string`
+- **Default:** Auto-detected (`'ssr'` for SSR builds, `'client'` otherwise)
+
+Identifies the current compilation. Used together with the `compilations` field on individual exceptions to scope which exceptions apply to which build.
+
+This is useful in multi-compilation setups like TanStack Start, Remix, or other frameworks that run multiple Vite builds (e.g. client, server, SSR) from a single project.
+
+**Example — multi-compilation setup:**
+
+```typescript
+// Shared exception config used across all compilations
+const exceptions = {
+  // Applies everywhere
+  lodash: { maxAllowedVersionCount: 2 },
+  // Only relevant in client builds
+  'react-dom': { maxAllowedVersionCount: 2, compilations: ['client'] },
+  // Only relevant in server builds
+  'server-renderer': { maxAllowedVersionCount: 2, compilations: ['server'] },
+};
+
+// Client vite config
+duplicatePackagesPlugin({
+  compilationName: 'client',
+  exceptions,
+});
+
+// Server vite config
+duplicatePackagesPlugin({
+  compilationName: 'server',
+  exceptions,
+});
+```
+
+With this setup:
+
+- The `react-dom` exception is only active during the `client` build and won't cause an "unused exception" error during the `server` build
+- The `server-renderer` exception is only active during the `server` build
+- The `lodash` exception applies to both
 
 ## Features
 
